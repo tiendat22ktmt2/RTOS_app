@@ -14,7 +14,7 @@ class VehicleService extends ChangeNotifier {
   Timer? _reconnectTimer;
 
   String _mqttHost = 'broker.hivemq.com';
-  final int _mqttPort = 1883;
+  final int _mqttPort = 8884;                          // WSS port
   final String _clientId = 'vehicle_ctrl_${DateTime.now().millisecondsSinceEpoch}';
 
   String _topicSensor  = 'vehicle/sensor';
@@ -44,7 +44,7 @@ class VehicleService extends ChangeNotifier {
   String get topicSensor => _topicSensor;
   String get topicCommand => _topicCommand;
 
-  String get wsUrl => 'mqtt://$_mqttHost:$_mqttPort';
+  String get wsUrl => 'wss://$_mqttHost:$_mqttPort/mqtt';
   void setWsUrl(String _) {}
 
   void setMqttHost(String host) { _mqttHost = host; notifyListeners(); }
@@ -52,7 +52,7 @@ class VehicleService extends ChangeNotifier {
   void setTopicCommand(String t) { _topicCommand = t; notifyListeners(); }
 
   // ════════════════════════════════════════════════════════════════════════
-  // Kết nối MQTT
+  // Kết nối MQTT qua WSS
   // ════════════════════════════════════════════════════════════════════════
 
   Future<void> connect() async {
@@ -61,9 +61,10 @@ class VehicleService extends ChangeNotifier {
     _status = ConnectionStatus.connecting;
     notifyListeners();
 
-    // Tạo client riêng, không dùng cascade cho logging/onSubscribed
-    _client = MqttServerClient(_mqttHost, _clientId);
-    _client!.port = _mqttPort;
+    _client = MqttServerClient.withPort(_mqttHost, _clientId, _mqttPort);
+    _client!.useWebSocket = true;                      // bật WebSocket
+    _client!.secure = true;                            // bật TLS/SSL (wss://)
+    _client!.websocketProtocols = MqttClientConstants.protocolsSingleDefault;
     _client!.keepAlivePeriod = 20;
     _client!.onDisconnected = _onDisconnected;
     _client!.onConnected = _onConnected;
@@ -88,7 +89,7 @@ class VehicleService extends ChangeNotifier {
 
   void _onConnected() {
     _status = ConnectionStatus.connected;
-    _addLog('✓ MQTT: $_mqttHost');
+    _addLog('✓ MQTT (WSS): $_mqttHost');
     notifyListeners();
 
     _client!.subscribe(_topicSensor, MqttQos.atLeastOnce);
