@@ -414,7 +414,7 @@ function connectMQTT() {
   if (client) { client.end(true); client = null; }
   var host  = document.getElementById('host').value.trim();
   var port  = parseInt(document.getElementById('port').value.trim());
-  var url   = 'ws://' + host + ':' + port + '/mqtt';
+  var url   = 'wss://' + host + ':' + port + '/mqtt';
   var cid   = 'web_ctrl_' + Date.now();
 
   setStatus('connecting');
