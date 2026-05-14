@@ -13,8 +13,9 @@ class VehicleService extends ChangeNotifier {
   MqttServerClient? _client;
   Timer? _reconnectTimer;
 
-  String _mqttHost = 'broker.hivemq.com';
-  final int _mqttPort = 8884;                          // WSS port
+  //String _mqttHost = 'broker.hivemq.com';
+  String _mqttHost = "18.185.216.165";
+  final int _mqttPort = 1883;                          // WSS port
   final String _clientId = 'vehicle_ctrl_${DateTime.now().millisecondsSinceEpoch}';
 
   String _topicSensor  = 'vehicle/sensor';
@@ -62,8 +63,8 @@ class VehicleService extends ChangeNotifier {
     notifyListeners();
 
     _client = MqttServerClient.withPort(_mqttHost, _clientId, _mqttPort);
-    _client!.useWebSocket = true;                      // bật WebSocket
-    _client!.secure = true;                            // bật TLS/SSL (wss://)
+    _client!.useWebSocket = false;                      // bật WebSocket
+    _client!.secure = false;                            // bật TLS/SSL (wss://)
     _client!.websocketProtocols = MqttClientConstants.protocolsSingleDefault;
     _client!.keepAlivePeriod = 20;
     _client!.onDisconnected = _onDisconnected;

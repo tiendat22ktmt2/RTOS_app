@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vehicle Control</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  h1 { font-size: 18px; font-weight: 500; letter-spacing: 1px; }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #30363d;
+    background: #161b22;
+  }
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #f85149;
+  }
+  .dot.connected { background: #3fb950; }
+  .dot.connecting { background: #d29922; animation: blink 1s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .card-label {
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .card-value {
+    font-size: 28px;
+    font-weight: 500;
+    color: #3fb950;
+  }
+  .card-value.red { color: #f85149; }
+  .card-unit { font-size: 13px; color: #8b949e; margin-left: 4px; }
+
+  .battery-bar {
+    height: 6px;
+    background: #21262d;
+    border-radius: 3px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .battery-fill {
+    height: 100%;
+    background: #3fb950;
+    border-radius: 3px;
+    transition: width 0.5s;
+  }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .dpad {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .dpad-label {
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    align-self: flex-start;
+    margin-bottom: 4px;
+  }
+  .dpad-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .btn {
+    width: 54px; height: 54px;
+    border-radius: 10px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #e6edf3;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    transition: background 0.1s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active, .btn.active {
+    background: #388bfd;
+    transform: scale(0.93);
+  }
+  .btn.stop {
+    background: #3d1a1a;
+    border-color: #f85149;
+    color: #f85149;
+    width: 54px; height: 54px;
+  }
+  .btn.stop:active { background: #f85149; color: #fff; }
+  .btn-spacer { width: 54px; height: 54px; }
+
+  .speed-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .speed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .speed-label {
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .speed-value {
+    font-size: 28px;
+    font-weight: 500;
+    color: #388bfd;
+  }
+  .speed-pwm { font-size: 11px; color: #8b949e; }
+  input[type=range] {
+    width: 100%;
+    accent-color: #388bfd;
+    margin: 8px 0;
+  }
+  .motor-bars { margin-top: 12px; }
+  .motor-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+  .motor-row span:first-child { width: 24px; color: #8b949e; }
+  .motor-track {
+    flex: 1;
+    height: 6px;
+    background: #21262d;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .motor-fill {
+    height: 100%;
+    background: #388bfd;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .motor-row span:last-child { width: 32px; text-align: right; color: #8b949e; font-size: 11px; }
+
+  .settings {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .settings-title {
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .input-row label { font-size: 13px; color: #8b949e; width: 100px; flex-shrink: 0; }
+  .input-row input[type=text] {
+    flex: 1;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 6px 10px;
+    font-size: 13px;
+    outline: none;
+  }
+  .input-row input:focus { border-color: #388bfd; }
+
+  .action-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .action-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #30363d;
+    background: #21262d;
+    color: #e6edf3;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .action-btn.primary { background: #1f6feb; border-color: #388bfd; }
+  .action-btn.danger  { background: #3d1a1a; border-color: #f85149; color: #f85149; }
+  .action-btn:hover { opacity: 0.85; }
+
+  .log-box {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 12px;
+    max-height: 140px;
+    overflow-y: auto;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  .log-label {
+    font-size: 11px;
+    color: #8b949e;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .log-line { margin-bottom: 4px; }
+  .log-line.err { color: #f85149; }
+  .log-line.ok  { color: #3fb950; }
+  .log-line.cmd { color: #388bfd; }
+  .log-line.info{ color: #8b949e; }
+
+  .alert {
+    background: #3d1a1a;
+    border: 1px solid #f85149;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #f85149;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .alert.show { display: block; }
+  .alert.safe {
+    background: #0d2818;
+    border-color: #3fb950;
+    color: #3fb950;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>VEHICLE CONTROL</h1>
+  <div class="status-badge">
+    <div class="dot" id="dot"></div>
+    <span id="status-text">OFFLINE</span>
+  </div>
+</div>
+
+<div class="alert safe show" id="alert-box">✓ Đường thông thoáng</div>
+
+<div class="cards">
+  <div class="card">
+    <div class="card-label">Nhịp tim</div>
+    <div class="card-value" id="hr">72<span class="card-unit">bpm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Khoảng cách</div>
+    <div class="card-value" id="dist">120<span class="card-unit">cm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">Pin</div>
+    <div class="card-value" id="bat">87<span class="card-unit">%</span></div>
+    <div class="battery-bar"><div class="battery-fill" id="bat-bar" style="width:87%"></div></div>
+  </div>
+</div>
+
+<div class="main-grid">
+  <div class="dpad">
+    <div class="dpad-label">Điều hướng</div>
+    <div class="dpad-row">
+      <div class="btn-spacer"></div>
+      <button class="btn" id="btn-F" onclick="sendCmd('MOVE','F')" ontouchstart="sendCmd('MOVE','F')">▲</button>
+      <div class="btn-spacer"></div>
+    </div>
+    <div class="dpad-row">
+      <button class="btn" id="btn-L" onclick="sendCmd('MOVE','L')" ontouchstart="sendCmd('MOVE','L')">◀</button>
+      <button class="btn stop" id="btn-S" onclick="sendCmd('STOP','S')" ontouchstart="sendCmd('STOP','S')">■</button>
+      <button class="btn" id="btn-R" onclick="sendCmd('MOVE','R')" ontouchstart="sendCmd('MOVE','R')">▶</button>
+    </div>
+    <div class="dpad-row">
+      <div class="btn-spacer"></div>
+      <button class="btn" id="btn-B" onclick="sendCmd('MOVE','B')" ontouchstart="sendCmd('MOVE','B')">▼</button>
+      <div class="btn-spacer"></div>
+    </div>
+    <div style="font-size:12px;color:#8b949e;margin-top:4px">DỪNG</div>
+  </div>
+
+  <div class="speed-panel">
+    <div class="speed-header">
+      <div>
+        <div class="speed-label">Tốc độ động cơ</div>
+        <div class="speed-value" id="spd-val">0<span class="speed-pwm"> PWM%</span></div>
+      </div>
+    </div>
+    <input type="range" min="0" max="100" value="0" id="speed-slider" oninput="onSpeedChange(this.value)">
+    <div class="motor-bars">
+      <div class="motor-row"><span>LF</span><div class="motor-track"><div class="motor-fill" id="lf" style="width:0%"></div></div><span id="lf-v">0%</span></div>
+      <div class="motor-row"><span>RF</span><div class="motor-track"><div class="motor-fill" id="rf" style="width:0%"></div></div><span id="rf-v">0%</span></div>
+      <div class="motor-row"><span>LB</span><div class="motor-track"><div class="motor-fill" id="lb" style="width:0%"></div></div><span id="lb-v">0%</span></div>
+      <div class="motor-row"><span>RB</span><div class="motor-track"><div class="motor-fill" id="rb" style="width:0%"></div></div><span id="rb-v">0%</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="settings">
+  <div class="settings-title">Cài đặt kết nối</div>
+  <div class="input-row">
+    <label>Broker host</label>
+    <input type="text" id="host" value="broker.hivemq.com">
+  </div>
+  <div class="input-row">
+    <label>Port (WS)</label>
+    <input type="text" id="port" value="8083">
+  </div>
+  <div class="input-row">
+    <label>Topic sensor</label>
+    <input type="text" id="topic-sensor" value="vehicle/sensor">
+  </div>
+  <div class="input-row">
+    <label>Topic cmd</label>
+    <input type="text" id="topic-cmd" value="vehicle/command">
+  </div>
+  <div class="action-btns">
+    <button class="action-btn primary" onclick="connectMQTT()">Kết nối WebSocket</button>
+    <button class="action-btn danger"  onclick="disconnectMQTT()">Ngắt kết nối</button>
+  </div>
+</div>
+
+<div class="log-label">Command log</div>
+<div class="log-box" id="log"></div>
+
+<script>
+var client = null;
+var speed = 0;
+var currentDir = 'S';
+
+function ts() {
+  var d = new Date();
+  return '[' + String(d.getHours()).padStart(2,'0') + ':' +
+               String(d.getMinutes()).padStart(2,'0') + ':' +
+               String(d.getSeconds()).padStart(2,'0') + ']';
+}
+
+function addLog(msg, cls) {
+  var el = document.getElementById('log');
+  var line = document.createElement('div');
+  line.className = 'log-line ' + (cls||'info');
+  line.textContent = ts() + ' ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  if (el.children.length > 100) el.removeChild(el.children[0]);
+}
+
+function setStatus(s) {
+  var dot = document.getElementById('dot');
+  var txt = document.getElementById('status-text');
+  dot.className = 'dot ' + s;
+  if (s === 'connected') txt.textContent = 'ONLINE';
+  else if (s === 'connecting') txt.textContent = 'ĐANG KẾT NỐI...';
+  else txt.textContent = 'OFFLINE';
+}
+
+function connectMQTT() {
+  if (client) { client.end(true); client = null; }
+  var host  = document.getElementById('host').value.trim();
+  var port  = parseInt(document.getElementById('port').value.trim());
+  var url   = 'ws://' + host + ':' + port + '/mqtt';
+  var cid   = 'web_ctrl_' + Date.now();
+
+  setStatus('connecting');
+  addLog('Đang kết nối: ' + url, 'info');
+
+  client = mqtt.connect(url, {
+    clientId: cid,
+    keepalive: 20,
+    reconnectPeriod: 5000,
+    connectTimeout: 10000
+  });
+
+  client.on('connect', function() {
+    setStatus('connected');
+    addLog('✓ MQTT kết nối thành công', 'ok');
+    var topicS = document.getElementById('topic-sensor').value.trim();
+    client.subscribe(topicS, function(err) {
+      if (!err) addLog('✓ Subscribe: ' + topicS, 'ok');
+    });
+  });
+
+  client.on('error', function(err) {
+    addLog('✗ Lỗi: ' + err.message, 'err');
+    setStatus('disconnected');
+  });
+
+  client.on('close', function() {
+    setStatus('disconnected');
+    addLog('✗ Mất kết nối', 'err');
+  });
+
+  client.on('message', function(topic, payload) {
+    try {
+      var data = JSON.parse(payload.toString());
+      if (data.heart_rate !== undefined) {
+        document.getElementById('hr').innerHTML = data.heart_rate + '<span class="card-unit">bpm</span>';
+      }
+      if (data.distance !== undefined) {
+        var d = data.distance;
+        document.getElementById('dist').innerHTML = d + '<span class="card-unit">cm</span>';
+        var alert = document.getElementById('alert-box');
+        if (d < 25) {
+          alert.className = 'alert show';
+          alert.textContent = '⚠ Chướng ngại vật gần!';
+        } else {
+          alert.className = 'alert safe show';
+          alert.textContent = '✓ Đường thông thoáng';
+        }
+      }
+      if (data.battery !== undefined) {
+        var b = Math.round(data.battery);
+        document.getElementById('bat').innerHTML = b + '<span class="card-unit">%</span>';
+        document.getElementById('bat-bar').style.width = b + '%';
+      }
+    } catch(e) {}
+  });
+}
+
+function disconnectMQTT() {
+  if (client) { client.end(); client = null; }
+  setStatus('disconnected');
+  addLog('— Đã ngắt kết nối', 'info');
+}
+
+function sendCmd(type, dir) {
+  currentDir = dir;
+  var topic = document.getElementById('topic-cmd').value.trim();
+  var payload = JSON.stringify({ cmd: type, dir: dir, spd: speed, ts: Date.now() });
+
+  if (client && client.connected) {
+    client.publish(topic, payload, { qos: 1 });
+  }
+
+  var labels = { F:'Tiến', B:'Lùi', L:'Rẽ trái', R:'Rẽ phải', S:'Dừng' };
+  addLog('→ ' + (type === 'STOP' ? 'Dừng khẩn cấp' : 'Di chuyển: ' + (labels[dir]||dir)), 'cmd');
+
+  ['F','B','L','R','S'].forEach(function(d) {
+    document.getElementById('btn-'+d).classList.remove('active');
+  });
+  document.getElementById('btn-'+dir).classList.add('active');
+  setTimeout(function() {
+    document.getElementById('btn-'+dir).classList.remove('active');
+  }, 200);
+
+  updateMotorBars(dir);
+}
+
+function onSpeedChange(v) {
+  speed = parseInt(v);
+  document.getElementById('spd-val').innerHTML = speed + '<span class="speed-pwm"> PWM%</span>';
+  var topic = document.getElementById('topic-cmd').value.trim();
+  var payload = JSON.stringify({ cmd: 'SPEED', spd: speed, ts: Date.now() });
+  if (client && client.connected) {
+    client.publish(topic, payload, { qos: 1 });
+  }
+  addLog('→ Tốc độ: ' + speed + '%', 'cmd');
+  updateMotorBars(currentDir);
+}
+
+function updateMotorBars(dir) {
+  var s = speed;
+  var vals = { LF:0, RF:0, LB:0, RB:0 };
+  if (dir === 'F') { vals = {LF:s, RF:s, LB:s, RB:s}; }
+  else if (dir === 'B') { vals = {LF:s, RF:s, LB:s, RB:s}; }
+  else if (dir === 'L') { vals = {LF:0, RF:s, LB:0, RB:s}; }
+  else if (dir === 'R') { vals = {LF:s, RF:0, LB:s, RB:0}; }
+  ['lf','rf','lb','rb'].forEach(function(k) {
+    var key = k.toUpperCase();
+    document.getElementById(k).style.width = vals[key] + '%';
+    document.getElementById(k+'-v').textContent = vals[key] + '%';
+  });
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowUp')    sendCmd('MOVE','F');
+  if (e.key === 'ArrowDown')  sendCmd('MOVE','B');
+  if (e.key === 'ArrowLeft')  sendCmd('MOVE','L');
+  if (e.key === 'ArrowRight') sendCmd('MOVE','R');
+  if (e.key === ' ')          sendCmd('STOP','S');
+});
+</script>
+</body>
+</html>
