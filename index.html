@@ -424,7 +424,8 @@ function connectMQTT() {
     clientId: cid,
     keepalive: 20,
     reconnectPeriod: 5000,
-    connectTimeout: 10000
+    connectTimeout: 10000,
+    rejectUnauthorized: false
   });
 
   client.on('connect', function() {
